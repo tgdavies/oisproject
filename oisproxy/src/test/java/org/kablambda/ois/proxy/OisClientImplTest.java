@@ -14,7 +14,7 @@ import java.io.OutputStream;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class OisClientImplTest {
@@ -30,7 +30,7 @@ public class OisClientImplTest {
     @BeforeEach
     public void setupClient() throws IOException, InterruptedException {
         final int[] data = new int[]{(int) 'x', (int) '\n'};
-        when(mockIn.read()).thenAnswer(new Answer<Integer>() {
+        lenient().when(mockIn.read()).thenAnswer(new Answer<Integer>() {
             int index = 0;
 
             @Override
