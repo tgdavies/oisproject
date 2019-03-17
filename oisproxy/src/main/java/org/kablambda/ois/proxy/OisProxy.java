@@ -1,61 +1,50 @@
 package org.kablambda.ois.proxy;
 
+import org.kablambda.ois.api.BooleanFunction;
 import org.kablambda.ois.api.ShipCommand;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class OisProxy {
-    public static void main(String... args) {
+    public static void main(String... args) throws FileNotFoundException {
 
         final OisClient client = new OisClientImpl("/dev/ttys007");
         final OisState state = new OisStateImpl(client);
-        new Thread(() -> {
-            BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-            for (; ; ) {
-                String s;
-                try {
-                    s = in.readLine();
-                    if (s == null) {
-                        return;
+        final List<UiController> uiControllers = new ArrayList<>();
+        final UiControllerHost host = new UiControllerHost(state, uiControllers);
+
+        uiControllers.add(new UiController() {
+            int count = 0;
+            @Override
+            public void onStateEvent(OisState.OisStateEvent event, final OisState state) {
+                event.accept(new OisState.OisStateEventVisitor<Void>() {
+                    @Override
+                    public Void onBooleanFunctionChanged(OisState.BooleanFunctionChanged event) {
+                        if (event.getBooleanFunction() == BooleanFunction.IS_FULLY_DOCKED && event.getNewValue()) {
+                            state.send(ShipCommand.UNDOCK);
+                        }
+                        if (event.getBooleanFunction() == BooleanFunction.IS_UNDOCKING && !event.getNewValue()) {
+                            state.send(ShipCommand.DOCK);
+                            count++;
+                            if (count == 10) {
+                                state.stop();
+                            }
+                        }
+                        return null;
                     }
-                    try {
-                        ShipCommand c = ShipCommand.valueOf(s);
-                        state.send(c);
-                    } catch (IllegalArgumentException e) {
-                        System.out.println("Bad command name " + s);
+
+                    @Override
+                    public Void onNumericalCommandChanged(OisState.NumericalCommandChanged event) {
+                        return null;
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
-        new Thread(() -> {
-            for (;;) {
-                try {
-                    state.getEvent().accept(new OisState.OisStateEventVisitor<Void>() {
-                        @Override
-                        public Void onBooleanFunctionChanged(OisState.BooleanFunctionChanged event) {
-                            System.out.println(event.getBooleanFunction().getDescription() + " changed to " + event.getNewValue());
-                            return null;
-                        }
 
-                        @Override
-                        public Void onNumericalCommandChanged(OisState.NumericalCommandChanged event) {
-                            System.out.println(event.getNumericalCommand().getDescription() + " changed to " + event.getNewValue());
-                            return null;
-                        }
-
-                        @Override
-                        public Void onActive() {
-                            System.out.println("Interface is Active");
-                            return null;
-                        }
-                    });
-                } catch (InterruptedException e) {
-
-                }
+                    @Override
+                    public Void onActive() {
+                        return null;
+                    }
+                });
             }
         });
     }

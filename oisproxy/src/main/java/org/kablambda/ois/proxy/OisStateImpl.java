@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 public class OisStateImpl implements OisState {
     private final OisClient client;
@@ -19,19 +20,27 @@ public class OisStateImpl implements OisState {
             new ChannelMapping<>(Double::parseDouble, NumericalCommandChanged::new);
     private final Map<ShipCommand, Integer> shipCommandMapping = new ConcurrentHashMap<>();
     private final BlockingQueue<OisStateEvent> events = new LinkedBlockingQueue<>();
+    private volatile boolean stopped = false;
+    private final Thread thread;
 
 
     public OisStateImpl(OisClient client) {
         this.client = client;
-        new Thread(new Runnable() {
+        thread = new Thread(new Runnable() {
             @Override
             public void run() {
                 boolean handshakeDone = false;
                 client.send("451");
                 for (; ; ) {
+                    if (stopped) {
+                        return;
+                    }
                     try {
                         String event = client.getEvent();
-                        if (!handshakeDone && event.equals("452")) {
+                        if (event == null) {
+                            // the client has been stopped
+                            return;
+                        } else if (!handshakeDone && event.equals("452")) {
                             initialiseChannels(client);
                             client.send("ACT");
                             handshakeDone = true;
@@ -83,7 +92,8 @@ public class OisStateImpl implements OisState {
                     shipCommandMapping.put(f, channel++);
                 }
             }
-        }).start();
+        });
+        thread.start();
     }
 
     @Override
@@ -97,8 +107,20 @@ public class OisStateImpl implements OisState {
     }
 
     @Override
-    public OisStateEvent getEvent() throws InterruptedException {
-        return events.take();
+    public OisStateEvent getEvent() {
+        for (;;) {
+            if (stopped) {
+                return null;
+            }
+            try {
+                OisStateEvent event = events.poll(1, TimeUnit.SECONDS);
+                if (event != null) {
+                    return event;
+                }
+            } catch (InterruptedException e) {
+                //ignore
+            }
+        }
     }
 
     @Override
@@ -107,5 +129,12 @@ public class OisStateImpl implements OisState {
         if (channel != null) {
             client.send("EXC=" + channel);
         }
+    }
+
+    @Override
+    public void stop() {
+        client.stop();
+        stopped = true;
+        thread.interrupt();
     }
 }

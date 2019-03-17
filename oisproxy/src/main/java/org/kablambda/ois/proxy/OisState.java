@@ -6,11 +6,40 @@ import org.kablambda.ois.api.ShipCommand;
 
 import java.util.Optional;
 
+/**
+ * Provides a higher level interface to OiS.
+ */
 public interface OisState {
+    /**
+     * Get the current value of a BooleanFunction
+     *
+     * @param f the function for which we want a value
+     * @return the most recently sent value, or none() if we have not seen one.
+     */
     Optional<Boolean> get(BooleanFunction f);
+
+    /**
+     * Get the current value of a NumericalCommand
+     *
+     * @param f the numerical command for which we want a value
+     * @return the most recently sent value, or none() if we have not seen one.
+     */
     Optional<Double> get(NumericalCommand f);
-    OisStateEvent getEvent() throws InterruptedException;
+
+    /**
+     * Get the next event. Subclasses of {@link OisStateEvent} are the types of events.
+     * This method blocks indefinitely.
+     *
+     * @return the next event or null if stop() has been called
+     */
+    OisStateEvent getEvent();
+
     void send(ShipCommand command);
+
+    /**
+     * Stop listening to OiS
+     */
+    void stop();
 
     interface OisStateEvent {
         <T> T accept(OisStateEventVisitor<T> visitor);
